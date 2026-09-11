@@ -126,7 +126,7 @@ export function validateProject(v) {
   const image=(s)=>s===null||s===''||(typeof s==='string'&&s.length<9000000&&/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s));
   if(v?.format!=='wallstory'||v.version!==1||!v.state)throw Error('This is not a supported Wallstory project.');
   const s=v.state;
-  if(!s.wall||!finite(s.wall.w,12,1200)||!finite(s.wall.h,12,1200)||!finite(s.gap,0,24)||!finite(s.margin,0,300)||!finite(s.center,0,s.wall.h))throw Error('Some wall measurements are invalid.');
+  if(!s.wall||!finite(s.wall.w,12,1200)||!finite(s.wall.h,12,1200)||!finite(s.gap,0,24)||!finite(s.margin,0,Math.min(s.wall.w,s.wall.h)/2)||!finite(s.center,0,s.wall.h))throw Error('Some wall measurements are invalid.');
   if(!['in','cm'].includes(s.unit)||!['balanced','grid','salon','row','stair'].includes(s.style)||!Array.isArray(s.items)||s.items.length>40)throw Error('The project settings are invalid.');
   if(!image(s.photo)||!image(s.rawPhoto)||!validCorners(s.corners))throw Error('The wall photo data is invalid.');
   const ids=new Set();

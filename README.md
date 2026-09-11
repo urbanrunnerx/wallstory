@@ -2,7 +2,7 @@
 
 **[Install Wallstory on your phone](https://urbanrunnerx.github.io/wallstory/install.html)** · **[Open the planner](https://urbanrunnerx.github.io/wallstory/)** · **[Download app source ZIP](https://github.com/urbanrunnerx/wallstory/archive/refs/heads/main.zip)**
 
-> The install and app links become available once GitHub Pages is enabled for this repository.
+> Open the live planner or use the install link above. No account is needed.
 
 A phone-friendly gallery wall planner made from a home decorating idea: photograph a wall, enter real dimensions, add frames and artwork, and find an arrangement that fits.
 
@@ -10,7 +10,7 @@ A phone-friendly gallery wall planner made from a home decorating idea: photogra
 
 Open **Install Wallstory on your phone** above in Chrome or Samsung Internet on Android, then tap **Install on my phone**. If no prompt appears, use the browser menu → **Install app** or **Add to Home screen**. On iPhone, open the link in Safari and use **Share → Add to Home Screen → Add**.
 
-Wallstory is an installable web app, with a home-screen icon and a standalone app window in supporting browsers. Once its first online setup finishes, the app can also load offline. Save project files to keep your work; installing the app does not add cloud storage. The ZIP download contains the source files and is not an Android APK installer.
+Wallstory is an installable web app, with a home-screen icon and a standalone app window in supporting browsers. Once its first online setup finishes, the app can also load offline. Your latest wall is automatically saved on this device, including its photos, and restored when you reopen the app. Save project files for backup or to move designs between devices; autosave does not add cloud storage. The ZIP download contains the source files and is not an Android APK installer.
 
 ## Use the app
 
@@ -20,9 +20,12 @@ Open the published GitHub Pages link in your phone or computer browser. No ChatG
 2. **Pieces:** Clear the sample pieces or edit them. Add your real outside dimensions, including frames. Upload artwork photos; use Crop & straighten to mark their edges.
 3. **Layout:** Choose Balanced, Gallery grid, Salon wall, Center line, or Stair step. Set the gap and edge distance. You can also drag a piece or enter its exact position.
 4. **Hang:** Open the measured hanging guide, export an image, or print/save the guide as a PDF.
-5. **Keep your work:** Download a project file using Save project. Reopen it with Open project later.
+5. **Keep your work:** Look for **Saved on this device** after editing. Your latest wall restores automatically. Download a backup with **Save project** and use **Open project** to import a design. Finish a piece edit with **Save changes** (or **Add to wall**) to include it in autosave.
+6. **Update:** Use **Check for updates**. When **Update available** appears, choose **Save & update**. The app waits for the design to finish saving before reloading. If saving fails, it stays open and explains what to do.
 
-Photos are processed in your browser tab and are not uploaded to an application server. Work is not automatically saved or synced. Your photos and layouts are not added to this repository when you use the app.
+Photos are processed on your device and are not uploaded to an application server. The latest design is stored locally in IndexedDB, separate from the offline app cache. Clearing browser data, removing app storage, or browser storage eviction can remove this local draft; keep downloadable backups of important designs. Autosave does not sync across devices or browsers. Your photos and layouts are not added to this repository when you use the app.
+
+Autosave reports storage errors instead of claiming a save succeeded. A second window cannot overwrite a draft changed by another window; download that window’s project before reopening. If an existing draft cannot be read, it is left untouched. Undo/redo history and unfinished form edits are kept only for the current session.
 
 ## Publish on GitHub Pages
 
@@ -52,8 +55,14 @@ Use an HTTP server or hosted link; opening `index.html` directly as a local file
 
 Automatic layouts preserve the entered outside dimensions. Shape spacing is checked conservatively using bounding rectangles. Photos are visual previews; verify all measurements before hanging. The guide provides frame edges and centers, not nail positions. Measure hanger offsets and account for wire sag separately.
 
+## Publishing updates
+
+For every app release, bump `VERSION` to the same new value in both `sw.js` and `pwa.js`. Include every runtime asset in `SHELL` in `sw.js`, then publish all changes together. The worker downloads the complete release before offering it. It activates when the user chooses **Save & update**, or after all older app windows close. Windows already in use are never automatically reloaded. Draft storage is versioned separately and never deleted by app updates. The first upgrade from the original release requires saving a project file before reloading, because that original release did not include autosave.
+
 ## Installation files
 
 `manifest.webmanifest`, `pwa.js`, `sw.js`, and `icons/` provide home-screen installation and the offline app shell. `install.html` explains installation and opens the browser’s native prompt when available.
 
 Implementation references: [MDN installation requirements](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable) and [GitHub Pages setup](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
+
+`project-store.js` handles draft transactions and serialized autosave. `update.css` and `pwa.js` provide saving status and controlled updates. Regression tests run with `node --test tests/*.test.mjs` with Node 22 or newer.

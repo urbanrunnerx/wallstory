@@ -1,4 +1,5 @@
 import {arrange,bounds,issues,clamp,validCorners,homography,validateProject} from './layout.js';
+import {createDraftStore,createAutosaver} from './project-store.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const defaultCorners=()=>[{x:.05,y:.05},{x:.95,y:.05},{x:.95,y:.85},{x:.05,y:.85}];
@@ -6,16 +7,24 @@ const starter=[['The big picture',20,28,'rectangle','#453c32'],['A favorite memo
 let state={wall:{w:144,h:96},unit:'in',gap:2,margin:4,center:57,style:'balanced',items:starter.map((a,i)=>({id:'piece-'+(i+1),name:a[0],w:a[1],h:a[2],shape:a[3],color:a[4],image:null,x:0,y:0,rotation:0})),photo:null,rawPhoto:null,corners:defaultCorners()};
 const initial=arrange(state);if(initial.ok)state.items=initial.items;
 let selected=null,tab='wall',planView=false,showMeasurements=true,showGrid=false,snap=true,history=[],future=[],dirty=false,variation=0,editing=null,draftImage=null,draftRotation=0,pendingPhoto=null,calibrationMode='wall',calibrationCorners=defaultCorners(),calibrationDrag=null,drag=null,toastTimer;
+let autosaver=null,initializing=true,pendingOperations=0;
 const unitFactor=()=>state.unit==='cm'?2.54:1;
 const number=(v,digits=2)=>Number(v.toFixed(digits)).toLocaleString('en-US',{maximumFractionDigits:digits});
 const display=v=>Number((v*unitFactor()).toFixed(2));
 const measure=v=>`${number(v*unitFactor())} ${state.unit}`;
 const toIn=v=>Number(v)/unitFactor();
 function snapshot(){return {...state,wall:{...state.wall},items:state.items.map(p=>({...p})),corners:state.corners.map(p=>({...p}))}}
+function projectDraft(){return {format:'wallstory',version:1,state:snapshot(),view:{tab,planView,showMeasurements,showGrid,snap}}}
+function autosaveStatus(status,error){
+  $('#save-strip').dataset.saveState=status;
+  $('#autosave-status').textContent=status==='saving'?'Saving on this device…':status==='saved'?'Saved on this device.':error?.name==='DraftConflictError'?error.message:'Autosave is unavailable. Use Save project to keep a backup.';
+}
+function saveDraft(){if(!initializing&&autosaver)autosaver.queue(projectDraft())}
+function changed(){dirty=true;saveDraft()}
 function remember(){history.push(snapshot());if(history.length>30)history.shift();future=[]}
-function commit(action){remember();action();dirty=true;render()}
+function commit(action){remember();action();changed();render()}
 function toast(message){clearTimeout(toastTimer);$('#toast').textContent=message;$('#toast').hidden=false;toastTimer=setTimeout(()=>$('#toast').hidden=true,5000)}
-function setTab(next,scroll=false){tab=next;$$('[data-tab]').forEach(b=>{b.setAttribute('aria-selected',b.dataset.tab===tab);b.tabIndex=b.dataset.tab===tab?0:-1});$$('[role=tabpanel]').forEach(p=>p.hidden=p.id!==`panel-${tab}`);if(scroll&&innerWidth<761)$('#panel-'+tab).scrollIntoView({behavior:'smooth',block:'start'})}
+function setTab(next,scroll=false){tab=next;$$('[data-tab]').forEach(b=>{b.setAttribute('aria-selected',b.dataset.tab===tab);b.tabIndex=b.dataset.tab===tab?0:-1});$$('[role=tabpanel]').forEach(p=>p.hidden=p.id!==`panel-${tab}`);if(scroll&&innerWidth<761)$('#panel-'+tab).scrollIntoView({behavior:'smooth',block:'start'});saveDraft()}
 function setInput(id,value,min,max){const el=$(id);el.value=display(value);if(min!==undefined)el.min=display(min);if(max!==undefined)el.max=display(max)}
 function shapeClip(shape){return shape==='hexagon'?'polygon(25% 0,75% 0,100% 50%,75% 100%,25% 100%,0 50%)':'none'}
 function bodyStyle(p){const odd=p.rotation%180!==0;return `left:50%;top:50%;width:${odd?p.h/p.w*100:100}%;height:${odd?p.w/p.h*100:100}%;transform:translate(-50%,-50%) rotate(${p.rotation}deg)`}
@@ -63,12 +72,12 @@ function measuredInput(selector,getRange,action){$(selector).addEventListener('c
 measuredInput('#wall-width',()=>[12,1200],v=>{state.wall.w=v;state.margin=Math.min(state.margin,Math.min(v,state.wall.h)/2)});
 measuredInput('#wall-height',()=>[12,1200],v=>{state.wall.h=v;state.center=Math.min(state.center,v);state.margin=Math.min(state.margin,Math.min(v,state.wall.w)/2)});
 measuredInput('#gap',()=>[0,24],v=>state.gap=v);measuredInput('#center-height',()=>[0,state.wall.h],v=>state.center=v);measuredInput('#margin',()=>[0,Math.min(state.wall.w,state.wall.h)/2],v=>state.margin=v);
-$('#show-measurements').addEventListener('change',e=>{showMeasurements=e.target.checked;render()});$('#show-grid').addEventListener('change',e=>{showGrid=e.target.checked;render()});$('#snap').addEventListener('change',e=>snap=e.target.checked);
-function changeView(isPlan){planView=isPlan;$('#photo-view').classList.toggle('active',!isPlan);$('#plan-view').classList.toggle('active',isPlan);$('#photo-view').setAttribute('aria-pressed',!isPlan);$('#plan-view').setAttribute('aria-pressed',isPlan);render()}
+$('#show-measurements').addEventListener('change',e=>{showMeasurements=e.target.checked;render();saveDraft()});$('#show-grid').addEventListener('change',e=>{showGrid=e.target.checked;render();saveDraft()});$('#snap').addEventListener('change',e=>{snap=e.target.checked;saveDraft()});
+function changeView(isPlan){planView=isPlan;$('#photo-view').classList.toggle('active',!isPlan);$('#plan-view').classList.toggle('active',isPlan);$('#photo-view').setAttribute('aria-pressed',!isPlan);$('#plan-view').setAttribute('aria-pressed',isPlan);render();saveDraft()}
 $('#photo-view').addEventListener('click',()=>changeView(false));$('#plan-view').addEventListener('click',()=>changeView(true));
 $('#arrange').addEventListener('click',()=>arrangeWall());$$('[data-layout]').forEach(b=>b.addEventListener('click',()=>arrangeWall(b.dataset.layout)));
-function undo(){if(!history.length)return;future.push(snapshot());state=history.pop();selected=null;dirty=true;render()}
-function redo(){if(!future.length)return;history.push(snapshot());state=future.pop();selected=null;dirty=true;render()}
+function undo(){if(!history.length)return;future.push(snapshot());state=history.pop();selected=null;changed();render()}
+function redo(){if(!future.length)return;history.push(snapshot());state=future.pop();selected=null;changed();render()}
 $('#undo').addEventListener('click',undo);$('#redo').addEventListener('click',redo);
 document.addEventListener('keydown',e=>{if($('dialog[open]')||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo()}});
 $$('.close-dialog').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
@@ -114,12 +123,12 @@ $('#pieces-layer').addEventListener('pointerdown',e=>{
 $('#pieces-layer').addEventListener('pointermove',e=>{
   if(!drag||e.pointerId!==drag.pointer)return;const dx=e.clientX-drag.startX,dy=e.clientY-drag.startY;
   if(!drag.moved&&Math.hypot(dx,dy)<4)return;
-  if(!drag.moved){remember();drag.moved=true}
+  if(!drag.moved){remember();drag.moved=true;dirty=true}
   const p=state.items.find(p=>p.id===drag.id),step=state.unit==='cm'?.5/2.54:.25;let x=drag.x+dx/drag.rect.width*state.wall.w,y=drag.y+dy/drag.rect.height*state.wall.h;
   if(snap){x=Math.round(x/step)*step;y=Math.round(y/step)*step}
   p.x=clamp(x,0,Math.max(0,state.wall.w-p.w));p.y=clamp(y,0,Math.max(0,state.wall.h-p.h));setPiecePosition(drag.el,p);updateStatus();e.preventDefault();
 });
-function endDrag(e,cancelled=false){if(!drag||drag.pointer!==e.pointerId)return;const current=drag;drag=null;if(current.el.hasPointerCapture(e.pointerId))current.el.releasePointerCapture(e.pointerId);if(current.moved){dirty=true;render();$(`[data-piece="${CSS.escape(current.id)}"]`)?.focus({preventScroll:true})}else if(!cancelled)openPiece(current.id)}
+function endDrag(e,cancelled=false){if(!drag||drag.pointer!==e.pointerId)return;const current=drag;drag=null;if(current.el.hasPointerCapture(e.pointerId))current.el.releasePointerCapture(e.pointerId);if(current.moved){changed();render();$(`[data-piece="${CSS.escape(current.id)}"]`)?.focus({preventScroll:true})}else if(!cancelled)openPiece(current.id)}
 $('#pieces-layer').addEventListener('pointerup',e=>endDrag(e));$('#pieces-layer').addEventListener('pointercancel',e=>endDrag(e,true));
 $('#pieces-layer').addEventListener('keydown',e=>{
   const el=e.target.closest('[data-piece]');if(!el)return;const p=state.items.find(p=>p.id===el.dataset.piece);if(!p)return;
@@ -129,6 +138,10 @@ $('#pieces-layer').addEventListener('keydown',e=>{
 });
 async function loadImage(src){const img=new Image();img.src=src;await img.decode();return img}
 async function readPhoto(file,maxSize=1800){
+  pendingOperations++;
+  try{return await readPhotoData(file,maxSize)}finally{pendingOperations--}
+}
+async function readPhotoData(file,maxSize=1800){
   if(file.size>25*1024*1024)throw Error('Choose a photo smaller than 25 MB.');
   if(file.type==='image/svg+xml')throw Error('Choose a JPEG, PNG, WebP, or another supported photo format.');
   const url=URL.createObjectURL(file);try{const img=await loadImage(url);if(img.width*img.height>80000000)throw Error('Choose a smaller photo.');const scale=Math.min(1,maxSize/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.9)}catch(e){throw Error(e.message==='Choose a smaller photo.'?e.message:'That photo could not be read. Try a JPEG or PNG.')}finally{URL.revokeObjectURL(url)}
@@ -172,9 +185,12 @@ $('#save-project').addEventListener('click',()=>{download(new Blob([JSON.stringi
 $('#open-project').addEventListener('click',()=>{$('#project-file').value='';$('#project-file').click()});
 $('#project-file').addEventListener('change',async e=>{
   const file=e.target.files[0];if(!file)return;
-  try{if(file.size>60*1024*1024)throw Error('Choose a project smaller than 60 MB.');const restored=validateProject(JSON.parse(await file.text()));const apply=()=>{commit(()=>{state=restored;selected=null});dirty=false;toast('Your gallery is ready to continue.')};if(dirty)confirmAction('Open this saved wall?','This will replace your current wall. You can undo the change.',apply);else apply()}catch(error){toast(error instanceof SyntaxError?'That file is not a valid Wallstory project.':error.message)}
+  pendingOperations++;
+  try{if(file.size>60*1024*1024)throw Error('Choose a project smaller than 60 MB.');const restored=validateProject(JSON.parse(await file.text()));const apply=()=>{commit(()=>{state=restored;selected=null});dirty=false;toast('Your gallery is ready to continue.')};if(dirty)confirmAction('Open this saved wall?','This will replace your current wall. You can undo the change.',apply);else apply()}catch(error){toast(error instanceof SyntaxError?'That file is not a valid Wallstory project.':error.message)}finally{pendingOperations--}
 });
-window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
+window.addEventListener('beforeunload',e=>{if((dirty&&(!autosaver||!autosaver.isSaved()))||drag?.moved||$('#piece-dialog').open||$('#calibration-dialog').open){e.preventDefault();e.returnValue=''}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&drag?.moved)saveDraft()});
+window.addEventListener('pagehide',()=>{if(drag?.moved)saveDraft()});
 function svgShape(p,attrs){if(p.shape==='circle'||p.shape==='oval')return `<ellipse cx="${p.w/2}" cy="${p.h/2}" rx="${p.w/2}" ry="${p.h/2}" ${attrs}/>`;if(p.shape==='hexagon')return `<polygon points="${p.w*.25},0 ${p.w*.75},0 ${p.w},${p.h*.5} ${p.w*.75},${p.h} ${p.w*.25},${p.h} 0,${p.h*.5}" ${attrs}/>`;if(p.shape==='arch')return `<path d="M0 ${p.h}V${p.h/2}A${p.w/2} ${p.h/2} 0 0 1 ${p.w} ${p.h/2}V${p.h}Z" ${attrs}/>`;return `<rect width="${p.w}" height="${p.h}" ${attrs}/>`}
 function guideSvg(){
   const stroke=Math.max(state.wall.w,state.wall.h)/550,font=Math.max(state.wall.w,state.wall.h)/65;
@@ -214,4 +230,39 @@ if(document.modelContext?.registerTool){
   register({name:'arrange_gallery_wall',title:'Arrange gallery wall',description:'Apply an automatic gallery layout to the current pieces using their real sizes and the existing spacing and wall measurements. Updates the visible plan. Does not save a file.',inputSchema:{type:'object',properties:{style:{type:'string',enum:['balanced','grid','salon','row','stair']}},required:['style'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute:input=>{if(!input||!['balanced','grid','salon','row','stair'].includes(input.style)||Object.keys(input).some(k=>k!=='style'))throw Error('Choose a supported layout style.');const result=arrangeWall(input.style);if(!result.ok)throw Error(result.message);return result}});
   window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
 }
-render();setTab('wall');
+// Hold editing until recovery finishes so a late read cannot replace a new edit.
+const recovery=(async()=>{
+  try{
+    const store=createDraftStore(window.indexedDB,new URL('.',location.href).pathname);
+    const saved=await store.load();
+    if(saved){
+      state=validateProject(saved);
+      const view=saved.view||{};
+      if(['wall','pieces','layout'].includes(view.tab))tab=view.tab;
+      for(const key of ['planView','showMeasurements','showGrid','snap']){
+        if(typeof view[key]!=='boolean')continue;
+        if(key==='planView')planView=view[key];else if(key==='showMeasurements')showMeasurements=view[key];else if(key==='showGrid')showGrid=view[key];else snap=view[key];
+      }
+    }
+    autosaver=createAutosaver(project=>store.write(project),autosaveStatus);
+    $('#autosave-status').textContent=saved?'Your saved wall is restored on this device.':'Autosave is ready on this device.';
+  }catch{
+    autosaveStatus('error');
+    // Leave an unreadable draft untouched. Manual project downloads still work.
+  }finally{
+    $('#show-measurements').checked=showMeasurements;$('#show-grid').checked=showGrid;$('#snap').checked=snap;
+    changeView(planView);setTab(tab);
+    initializing=false;
+    $('#planner').inert=false;$('.header-actions').inert=false;
+    $('#planner').setAttribute('aria-busy','false');
+  }
+})();
+window.wallstoryProject={
+  async prepareForUpdate(){
+    await recovery;
+    if($('dialog[open]')||drag||pendingOperations)throw Error('Finish your current edit or photo upload before updating.');
+    if(!autosaver)throw Error('Autosave is unavailable. Download your project with Save project before reopening the app.');
+    saveDraft();
+    if(!(await autosaver.flush()))throw Error(autosaver.error()?.name==='DraftConflictError'?autosaver.error().message:'Your wall could not be saved. Free some device storage and try again, or download a project backup.');
+  }
+};
