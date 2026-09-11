@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#204b41">
+  <meta name="description" content="Install Wallstory on your phone and plan your gallery wall with real photos and measurements.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Wallstory">
+  <title>Install Wallstory</title>
+  <link rel="icon" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./install.css">
+  <script src="./install.js" defer></script>
+  <script src="./pwa.js" defer></script>
+</head>
+<body>
+<main>
+  <a class="brand" href="./"><img src="./icons/icon-192.png" width="42" height="42" alt="">wallstory.</a>
+  <section class="install-card">
+    <span class="eyebrow">YOUR GALLERY WALL, IN YOUR POCKET</span>
+    <h1>Make room for your story.</h1>
+    <p>See your own artwork on your own wall. Try arrangements, fine-tune the spacing, and take a measured plan to the wall.</p>
+    <button id="install-button" type="button">Install on my phone</button>
+    <a class="open-link" href="./">Open the planner</a>
+    <p id="install-status" class="status" role="status">Install from your phone’s browser to add Wallstory to your home screen.</p>
+  </section>
+  <section id="install-instructions" class="instructions" tabindex="-1">
+    <h2>A home for the app</h2>
+    <div id="android-instructions"><h3>Android · Chrome or Samsung Internet</h3><p>Open this page in your regular browser. Tap <strong>Install on my phone</strong> when the install prompt is ready. You can also use your browser menu and choose <strong>Install app</strong> or <strong>Add to Home screen</strong>, then confirm.</p></div>
+    <div id="ios-instructions"><h3>iPhone · Safari</h3><p>Open this page in Safari. Tap <strong>Share</strong>, choose <strong>Add to Home Screen</strong>, and tap <strong>Add</strong>.</p></div>
+    <p class="note">If you opened this inside a messaging app, use its menu to open the link in Chrome, Samsung Internet, or Safari first. Installation options depend on your browser.</p>
+  </section>
+  <section class="details"><h2>Ready when inspiration strikes.</h2><p id="offline-status">Preparing the app for offline use…</p><p>Your photos stay in your browser. Use <strong>Save project</strong> to download your work and reopen it later.</p><p>No ChatGPT login or paid AI connection is needed.</p></section>
+  <footer><a href="https://github.com/urbanrunnerx/wallstory">View the project</a><span>·</span><a href="https://github.com/urbanrunnerx/wallstory/archive/refs/heads/main.zip">Download source ZIP</a><p>The ZIP contains the app’s files. Use the install button above to add the app to your phone.</p></footer>
+</main>
+</body>
+</html>

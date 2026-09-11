@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "Wallstory · Gallery Wall Planner",
+  "short_name": "Wallstory",
+  "description": "Photograph your wall, add your artwork, and plan a gallery wall using real measurements.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#faf9f6",
+  "theme_color": "#204b41",
+  "lang": "en",
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
