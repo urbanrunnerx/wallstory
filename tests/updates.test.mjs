@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 const pwaCode=await readFile(new URL('../pwa.js',import.meta.url),'utf8');
 const workerCode=await readFile(new URL('../sw.js',import.meta.url),'utf8');
+const release=workerCode.match(/const VERSION = '([^']+)'/)[1];
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const settle=async()=>{await tick();await tick()};
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}};
@@ -21,7 +22,7 @@ function pwaHarness(save){
    serviceWorker.dispatchEvent(new Event('controllerchange'));
   }
  }});
- serviceWorker.controller=makeWorker('20260911-2');
+ serviceWorker.controller=makeWorker(release);
  registration.waiting=makeWorker('next-release');
  serviceWorker.register=async()=>registration;serviceWorker.ready=Promise.resolve(registration);
  const window=Object.assign(new EventTarget(),{isSecureContext:true,wallstoryProject:{async prepareForUpdate(){log.push('save-start');await save();log.push('saved')}}});
@@ -68,5 +69,5 @@ test('complete release downloads without auto-activating; explicit update activa
 test('failed release download leaves the old app cache intact',async()=>{
  const h=workerHarness(true);await assert.rejects(h.event('install'));
  assert.equal(h.skipped,0);assert.equal(h.stores.has('wallstory-/wallstory/-older'),true);
- assert.equal(h.stores.has('wallstory-/wallstory/-20260911-2'),false);
+ assert.equal(h.stores.has('wallstory-/wallstory/-'+release),false);
 });

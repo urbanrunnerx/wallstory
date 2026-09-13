@@ -1,5 +1,6 @@
 import {arrange,bounds,issues,clamp,validCorners,homography,validateProject} from './layout.js';
 import {createDraftStore,createAutosaver} from './project-store.js';
+import {createStudio} from './studio.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const defaultCorners=()=>[{x:.05,y:.05},{x:.95,y:.05},{x:.95,y:.85},{x:.05,y:.85}];
@@ -7,7 +8,7 @@ const starter=[['The big picture',20,28,'rectangle','#453c32'],['A favorite memo
 let state={wall:{w:144,h:96},unit:'in',gap:2,margin:4,center:57,style:'balanced',items:starter.map((a,i)=>({id:'piece-'+(i+1),name:a[0],w:a[1],h:a[2],shape:a[3],color:a[4],image:null,x:0,y:0,rotation:0})),photo:null,rawPhoto:null,corners:defaultCorners()};
 const initial=arrange(state);if(initial.ok)state.items=initial.items;
 let selected=null,tab='wall',planView=false,showMeasurements=true,showGrid=false,snap=true,history=[],future=[],dirty=false,variation=0,editing=null,draftImage=null,draftRotation=0,pendingPhoto=null,calibrationMode='wall',calibrationCorners=defaultCorners(),calibrationDrag=null,drag=null,toastTimer;
-let autosaver=null,initializing=true,pendingOperations=0;
+let autosaver=null,initializing=true,pendingOperations=0,studio=null;
 const unitFactor=()=>state.unit==='cm'?2.54:1;
 const number=(v,digits=2)=>Number(v.toFixed(digits)).toLocaleString('en-US',{maximumFractionDigits:digits});
 const display=v=>Number((v*unitFactor()).toFixed(2));
@@ -55,6 +56,7 @@ function updateStatus(){
   else if(v.margin.length){text=`Some pieces are closer than ${measure(state.margin)} to a wall edge.`;warning=true}
   $('#status-text').textContent=text;$('#status').classList.toggle('warning',warning);$('.status-symbol').textContent=warning?'!':'✓';
   const b=bounds(state.items);$('#composition-size').textContent=state.items.length?`${number(display(b.w))} × ${number(display(b.h))} ${state.unit} overall`:'';
+  studio?.sync();
 }
 function arrangeWall(style=state.style){
   const r=arrange(state,style,variation++);
@@ -79,13 +81,14 @@ $('#arrange').addEventListener('click',()=>arrangeWall());$$('[data-layout]').fo
 function undo(){if(!history.length)return;future.push(snapshot());state=history.pop();selected=null;changed();render()}
 function redo(){if(!future.length)return;history.push(snapshot());state=future.pop();selected=null;changed();render()}
 $('#undo').addEventListener('click',undo);$('#redo').addEventListener('click',redo);
-document.addEventListener('keydown',e=>{if($('dialog[open]')||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo()}});
+document.addEventListener('keydown',e=>{if($('dialog[open]')||/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();if(studio?.active&&studio.hasDraft()){toast('Apply your piece edits before using Undo.');return}e.shiftKey?redo():undo()}});
 $$('.close-dialog').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
 $('#help').addEventListener('click',()=>$('#help-dialog').showModal());
 function confirmAction(title,message,action){$('#confirm-title').textContent=title;$('#confirm-message').textContent=message;$('#confirm-yes').onclick=()=>{$('#confirm-dialog').close();action()};$('#confirm-dialog').showModal()}
 $('#confirm-cancel').addEventListener('click',()=>$('#confirm-dialog').close());
 $('#clear-pieces').addEventListener('click',()=>{if(state.items.length)confirmAction('Clear all pieces?','This removes every piece from your wall. You can undo it.',()=>commit(()=>{state.items=[];selected=null}))});
-function openPiece(id=null){
+function openPiece(id=null,details=false){
+  if(studio?.active&&!details){id?studio.inspect(id):studio.add();return}
   if(!id&&state.items.length>=40){toast('This wall supports up to 40 pieces.');return}
   editing=id;const p=id?state.items.find(p=>p.id===id):{name:'',w:12,h:16,shape:'rectangle',color:'#453c32',image:null,rotation:0};if(!p)return;
   selected=id;draftImage=p.image;draftRotation=p.rotation;
@@ -116,8 +119,8 @@ $('#piece-form').addEventListener('submit',e=>{
 $('#delete-piece').addEventListener('click',()=>{commit(()=>{state.items=state.items.filter(p=>p.id!==editing);selected=null});$('#piece-dialog').close()});
 function setPiecePosition(el,p){el.style.left=`${p.x/state.wall.w*100}%`;el.style.top=`${p.y/state.wall.h*100}%`;el.setAttribute('aria-label',`${p.name}. Left ${measure(p.x)}, top ${measure(p.y)}. Enter to edit.`)}
 $('#pieces-layer').addEventListener('pointerdown',e=>{
-  const el=e.target.closest('[data-piece]');if(!el||e.button!==0)return;const p=state.items.find(p=>p.id===el.dataset.piece);if(!p)return;
-  selected=p.id;$$('.piece').forEach(n=>n.classList.toggle('selected',n===el));el.focus({preventScroll:true});el.setPointerCapture(e.pointerId);
+  const el=e.target.closest('[data-piece]');if(!el||e.button!==0||e.isPrimary===false||drag||!studio?.allowPieceDrag())return;const p=state.items.find(p=>p.id===el.dataset.piece);if(!p)return;
+  selected=p.id;studio?.selectionChanged();$$('.piece').forEach(n=>n.classList.toggle('selected',n===el));el.focus({preventScroll:true});el.setPointerCapture(e.pointerId);
   drag={id:p.id,el,pointer:e.pointerId,startX:e.clientX,startY:e.clientY,x:p.x,y:p.y,moved:false,rect:$('#wall').getBoundingClientRect()};e.preventDefault();
 });
 $('#pieces-layer').addEventListener('pointermove',e=>{
@@ -133,6 +136,7 @@ $('#pieces-layer').addEventListener('pointerup',e=>endDrag(e));$('#pieces-layer'
 $('#pieces-layer').addEventListener('keydown',e=>{
   const el=e.target.closest('[data-piece]');if(!el)return;const p=state.items.find(p=>p.id===el.dataset.piece);if(!p)return;
   if(e.key==='Enter'||e.key===' '){e.preventDefault();openPiece(p.id);return}
+  if(studio?.active&&!studio.allowPieceDrag())return;
   const moves={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};if(!moves[e.key])return;e.preventDefault();const d=moves[e.key],step=(state.unit==='cm'?.5/2.54:.25)*(e.shiftKey?4:1);
   commit(()=>{p.x=clamp(p.x+d[0]*step,0,Math.max(0,state.wall.w-p.w));p.y=clamp(p.y+d[1]*step,0,Math.max(0,state.wall.h-p.h));selected=p.id});$(`[data-piece="${CSS.escape(p.id)}"]`)?.focus({preventScroll:true});
 });
@@ -188,9 +192,9 @@ $('#project-file').addEventListener('change',async e=>{
   pendingOperations++;
   try{if(file.size>60*1024*1024)throw Error('Choose a project smaller than 60 MB.');const restored=validateProject(JSON.parse(await file.text()));const apply=()=>{commit(()=>{state=restored;selected=null});dirty=false;toast('Your gallery is ready to continue.')};if(dirty)confirmAction('Open this saved wall?','This will replace your current wall. You can undo the change.',apply);else apply()}catch(error){toast(error instanceof SyntaxError?'That file is not a valid Wallstory project.':error.message)}finally{pendingOperations--}
 });
-window.addEventListener('beforeunload',e=>{if((dirty&&(!autosaver||!autosaver.isSaved()))||drag?.moved||$('#piece-dialog').open||$('#calibration-dialog').open){e.preventDefault();e.returnValue=''}});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&drag?.moved)saveDraft()});
-window.addEventListener('pagehide',()=>{if(drag?.moved)saveDraft()});
+window.addEventListener('beforeunload',e=>{if((dirty&&(!autosaver||!autosaver.isSaved()))||drag?.moved||$('#piece-dialog').open||$('#calibration-dialog').open||studio?.hasDraft()||studio?.isBusy()){e.preventDefault();e.returnValue=''}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&(drag?.moved||studio?.isBusy()))saveDraft()});
+window.addEventListener('pagehide',()=>{if(drag?.moved||studio?.isBusy())saveDraft()});
 function svgShape(p,attrs){if(p.shape==='circle'||p.shape==='oval')return `<ellipse cx="${p.w/2}" cy="${p.h/2}" rx="${p.w/2}" ry="${p.h/2}" ${attrs}/>`;if(p.shape==='hexagon')return `<polygon points="${p.w*.25},0 ${p.w*.75},0 ${p.w},${p.h*.5} ${p.w*.75},${p.h} ${p.w*.25},${p.h} 0,${p.h*.5}" ${attrs}/>`;if(p.shape==='arch')return `<path d="M0 ${p.h}V${p.h/2}A${p.w/2} ${p.h/2} 0 0 1 ${p.w} ${p.h/2}V${p.h}Z" ${attrs}/>`;return `<rect width="${p.w}" height="${p.h}" ${attrs}/>`}
 function guideSvg(){
   const stroke=Math.max(state.wall.w,state.wall.h)/550,font=Math.max(state.wall.w,state.wall.h)/65;
@@ -230,6 +234,40 @@ if(document.modelContext?.registerTool){
   register({name:'arrange_gallery_wall',title:'Arrange gallery wall',description:'Apply an automatic gallery layout to the current pieces using their real sizes and the existing spacing and wall measurements. Updates the visible plan. Does not save a file.',inputSchema:{type:'object',properties:{style:{type:'string',enum:['balanced','grid','salon','row','stair']}},required:['style'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute:input=>{if(!input||!['balanced','grid','salon','row','stair'].includes(input.style)||Object.keys(input).some(k=>k!=='style'))throw Error('Choose a supported layout style.');const result=arrangeWall(input.style);if(!result.ok)throw Error(result.message);return result}});
   window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
 }
+studio=createStudio({
+  get:()=>({state,selected,canUndo:!!history.length,canRedo:!!future.length,view:{planView,showMeasurements,showGrid,snap}}),
+  select:id=>{selected=id;$$('.piece').forEach(el=>el.classList.toggle('selected',el.dataset.piece===id))},
+  applyPiece:(piece,adding=false)=>{
+    const candidate={...state,items:adding?[...state.items,piece]:state.items.map(p=>p.id===piece.id?piece:p)};
+    const checked=validateProject({format:'wallstory',version:1,state:candidate});
+    commit(()=>{state=checked;selected=piece.id});
+  },
+  remove:id=>commit(()=>{state.items=state.items.filter(p=>p.id!==id);selected=null}),
+  beginGesture:remember,
+  previewPiece:piece=>{
+    const p=state.items.find(p=>p.id===piece.id);if(!p)return;Object.assign(p,piece);dirty=true;
+    const el=$(`[data-piece="${CSS.escape(p.id)}"]`);if(el){setPiecePosition(el,p);el.style.width=`${p.w/state.wall.w*100}%`;el.style.height=`${p.h/state.wall.h*100}%`;el.querySelector('.piece-body').style.cssText=bodyStyle(p);el.querySelector('.piece-label').textContent=`${number(display(p.w))} × ${number(display(p.h))}`}
+    updateStatus();
+  },
+  endGesture:()=>{changed();render()},
+  finishDrag:()=>{if(drag)endDrag({pointerId:drag.pointer},true)},
+  undo,redo,confirm:confirmAction,toast,
+  details:id=>openPiece(id,true),
+  arrange:(style,gap,margin)=>{
+    const proposed={...state,gap,margin};const result=arrange(proposed,style,variation++);
+    if(!result.ok){toast(result.message);return}
+    commit(()=>{state={...proposed,style,items:result.items};selected=null});toast('Wall arranged. Every piece keeps its actual size.');
+  },
+  setView:(key,value)=>{
+    if(key==='planView'){changeView(value);return}
+    if(key==='showMeasurements'){showMeasurements=value;$('#show-measurements').checked=value}
+    if(key==='showGrid'){showGrid=value;$('#show-grid').checked=value}
+    if(key==='snap'){snap=value;$('#snap').checked=value}
+    render();saveDraft();
+  },
+  export:exportImage,
+  backup:()=>$('#save-project').click()
+});
 // Hold editing until recovery finishes so a late read cannot replace a new edit.
 const recovery=(async()=>{
   try{
@@ -260,7 +298,7 @@ const recovery=(async()=>{
 window.wallstoryProject={
   async prepareForUpdate(){
     await recovery;
-    if($('dialog[open]')||drag||pendingOperations)throw Error('Finish your current edit or photo upload before updating.');
+    if($('dialog[open]')||drag||pendingOperations||studio?.hasDraft()||studio?.isBusy())throw Error('Finish your current edit or photo upload before updating.');
     if(!autosaver)throw Error('Autosave is unavailable. Download your project with Save project before reopening the app.');
     saveDraft();
     if(!(await autosaver.flush()))throw Error(autosaver.error()?.name==='DraftConflictError'?autosaver.error().message:'Your wall could not be saved. Free some device storage and try again, or download a project backup.');

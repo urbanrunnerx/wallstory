@@ -27,6 +27,20 @@ Photos are processed on your device and are not uploaded to an application serve
 
 Autosave reports storage errors instead of claiming a save succeeded. A second window cannot overwrite a draft changed by another window; download that window’s project before reopening. If an existing draft cannot be read, it is left untouched. Undo/redo history and unfinished form edits are kept only for the current session.
 
+## Full-screen wall studio
+
+Tap **Full-screen studio** above the wall. The app requests fullscreen and landscape where supported. If your browser cannot lock orientation, turn the phone sideways with auto-rotate enabled; the workspace also supports portrait. **Done** returns to the main planner with the same design.
+
+- **+ Piece** opens a compact editor. Enter the shape, outside dimensions, and frame finish, then **Add to wall**.
+- Tap a piece to select it. Drag it to move, drag a blue corner to resize, or use the panel for exact dimensions and positions. **Apply changes** commits form edits; a completed drag saves immediately.
+- Circles and squares stay equal on both axes. **Keep proportions with corner handles** preserves other aspect ratios. Measurement snapping also applies to resizing.
+- **Photo & crop** opens the existing photo editor without leaving the workspace. Rotate, duplicate, center across the wall, center vertically, delete with confirmation, and undo/redo are available in the studio.
+- Pinch with two fingers or use the zoom buttons (100–800%). Empty space pans the view; **Pan** allows dragging over pieces without moving them. **Fit wall** resets the view. Zoom never changes the measured wall or piece sizes.
+- Collapse **Pieces** to use the entire canvas. The **Arrange** tab controls layout and spacing; **View** includes plan view, grid, measurement labels, snapping, landscape, and downloads.
+- The save indicator and fit warnings remain visible. A single resize gesture is one undo step. Unapplied form edits block updates and ask before being discarded.
+
+Fullscreen and orientation are browser capabilities; support varies. The viewport fallback preserves all editing controls. Test on the target phone before relying on automatic rotation. The automated DOM interaction tests do not render CSS or emulate native phone fullscreen.
+
 ## Publish on GitHub Pages
 
 After these files are uploaded to the repository root:
@@ -65,4 +79,6 @@ For every app release, bump `VERSION` to the same new value in both `sw.js` and 
 
 Implementation references: [MDN installation requirements](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable) and [GitHub Pages setup](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
 
-`project-store.js` handles draft transactions and serialized autosave. `update.css` and `pwa.js` provide saving status and controlled updates. Regression tests run with `node --test tests/*.test.mjs` with Node 22 or newer.
+`studio.js`, `studio.css`, and `studio-math.js` provide the immersive editor, responsive controls, and viewport/resize geometry. `project-store.js` handles draft transactions and serialized autosave. `update.css` and `pwa.js` provide saving status and controlled updates. Regression tests run with `node --test tests/*.test.mjs` with Node 22 or newer.
+
+Browser references: [Fullscreen requests](https://developer.mozilla.org/en-US/docs/Web/API/Element/requestFullscreen), [orientation lock](https://developer.mozilla.org/en-US/docs/Web/API/ScreenOrientation/lock).
