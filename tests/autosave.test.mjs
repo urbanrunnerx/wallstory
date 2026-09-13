@@ -4,7 +4,7 @@ import {createAutosaver,createDraftStore} from '../project-store.js';
 import {validateProject} from '../layout.js';
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}};
-const project=()=>({format:'wallstory',version:1,state:{wall:{w:360,h:108},unit:'in',gap:2,margin:4,center:57,style:'balanced',photo:'data:image/jpeg;base64,YWJj',rawPhoto:'data:image/jpeg;base64,ZGVm',corners:[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],items:[{id:'one',name:'Family',shape:'rectangle',w:12,h:16,x:40,y:20,rotation:90,color:'#123456',image:'data:image/png;base64,YWJj'}]},view:{tab:'layout',planView:true,showMeasurements:false,showGrid:true,snap:false}});
+const project=()=>({format:'wallstory',version:1,state:{wall:{w:360,h:108},unit:'in',gap:2,margin:4,center:57,style:'balanced',photo:'data:image/jpeg;base64,YWJj',rawPhoto:'data:image/jpeg;base64,ZGVm',corners:[{x:0,y:0},{x:1,y:0},{x:1,y:1},{x:0,y:1}],items:[{id:'one',name:'Family',shape:'rectangle',w:12,h:16,x:40,y:20,rotation:90,color:'#123456',hanging:null,image:'data:image/png;base64,YWJj'}]},view:{tab:'layout',planView:true,showMeasurements:false,showGrid:true,snap:false}});
 
 test('autosave recovers wall dimensions, images, corners, piece positions, and view options',async()=>{
  let disk;

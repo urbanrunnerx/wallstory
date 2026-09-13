@@ -1,3 +1,4 @@
+import {validateHanging} from './hanging.js';
 // All geometry is in inches. Visual scale never changes these dimensions.
 export const EPS = 1e-6;
 export const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -133,7 +134,7 @@ export function validateProject(v) {
   const items=s.items.map(p=>{
     if(!p||typeof p.id!=='string'||p.id.length>100||ids.has(p.id)||typeof p.name!=='string'||p.name.length>60||!['rectangle','square','circle','oval','arch','hexagon'].includes(p.shape)||!finite(p.w,.25,600)||!finite(p.h,.25,600)||!finite(p.x,-1200,1200)||!finite(p.y,-1200,1200)||![0,90,180,270].includes(p.rotation)||!/^#[0-9a-f]{6}$/i.test(p.color)||!image(p.image))throw Error('A piece contains invalid measurements or photo data.');
     if(['square','circle'].includes(p.shape)&&Math.abs(p.w-p.h)>EPS)throw Error('A circle or square must have equal width and height.');
-    ids.add(p.id);return {id:p.id,name:p.name,shape:p.shape,w:p.w,h:p.h,x:p.x,y:p.y,rotation:p.rotation,color:p.color,image:p.image};
+    ids.add(p.id);return {id:p.id,name:p.name,shape:p.shape,w:p.w,h:p.h,x:p.x,y:p.y,rotation:p.rotation,color:p.color,image:p.image,hanging:validateHanging(p.hanging)};
   });
   return {wall:{w:s.wall.w,h:s.wall.h},gap:s.gap,margin:s.margin,center:s.center,unit:s.unit,style:s.style,items,photo:s.photo,rawPhoto:s.rawPhoto,corners:s.corners.map(p=>({x:p.x,y:p.y}))};
 }

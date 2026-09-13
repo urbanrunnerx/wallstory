@@ -1,9 +1,9 @@
 // Release the app shell as a unit. Bump VERSION in both this file and pwa.js.
-const VERSION = '20260913-1';
+const VERSION = '20260913-2';
 const PREFIX = 'wallstory-' + new URL(self.registration.scope).pathname + '-';
 const CACHE = PREFIX + VERSION;
 const SHELL = [
-  './', './index.html', './app.js', './layout.js', './project-store.js', './studio.js', './studio-math.js', './studio.css', './style.css', './sample-wall.webp',
+  './', './index.html', './app.js', './layout.js', './project-store.js', './studio.js', './studio-math.js', './studio.css', './hanging.js', './hanging-editor.js', './hanging-guide.js', './hanging.css', './style.css', './sample-wall.webp',
   './install.html', './install.css', './install.js', './pwa.js', './update.css', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable.png'
 ].map(path => new URL(path, self.registration.scope).href);

@@ -6,7 +6,7 @@ export function createStudio(api){
   const home=wall.parentNode,homeNext=wall.nextSibling,main=$('planner'),header=document.querySelector('.header');
   let active=false,view={zoom:1,x:0,y:0},size={width:1,height:1},mode='pieces',editor=false,isNew=false,editId=null,formDirty=false,pan=false;
   let resizing=null,navigation=null,pointers=new Map(),wasFullscreen=false,locked=false,frame=0,oldFocus=null,oldMainInert=false,oldHeaderInert=false;
-  let lastWall='',entry=0,listData=[];
+  let lastWall='',entry=0,listData=[],formMeasurements={};
   const unit=()=>api.get().state.unit;
   const factor=()=>unit()==='cm'?2.54:1;
   const show=n=>Number((n*factor()).toFixed(3));
@@ -48,6 +48,8 @@ export function createStudio(api){
   function renderEditor(p){
     $('studio-name').value=p.name;$('studio-shape').value=p.shape;$('studio-color').value=p.color;
     for(const [id,key] of [['width','w'],['height','h'],['x','x'],['y','y']])$(`studio-${id}`).value=show(p[key]);
+    $('studio-hanging-status').textContent=api.hangingStatus(p).label;
+    formMeasurements=Object.fromEntries(['width','height','x','y'].map(id=>[id,$('studio-'+id).value]));
     $('studio-editor-title').textContent=isNew?'Add something you love':p.name;
     $('studio-editor-caption').textContent=isNew?'Give it a shape and its outside dimensions.':'Resize on the wall, or enter exact measurements.';
     $('studio-apply').textContent=isNew?'Add to wall':'Apply changes';
@@ -143,12 +145,13 @@ export function createStudio(api){
     event.preventDefault();
     try{
       const state=api.get().state,old=state.items.find(p=>p.id===editId);
-      const name=$('studio-name').value.trim(),w=parse('studio-width'),h=parse('studio-height');
+      const read=(id,key)=>old&&$('studio-'+id).value===formMeasurements[id]?old[key]:parse('studio-'+id);
+      const name=$('studio-name').value.trim(),w=read('width','w'),h=['square','circle'].includes($('studio-shape').value)?w:read('height','h');
       if(!name||name.length>60||![w,h].every(n=>Number.isFinite(n)&&n>=.25&&n<=600))throw Error('Enter a name and outside dimensions between '+show(.25)+' and '+show(600)+' '+unit()+'.');
       const p={...(old||{id:crypto.randomUUID(),rotation:0,image:null}),name,w,h,shape:$('studio-shape').value,color:$('studio-color').value};
       if(isNew){p.x=(state.wall.w-w)/2;p.y=Math.max(0,state.wall.h-state.center-h/2)}
       else{
-        const x=parse('studio-x'),y=parse('studio-y');
+        const x=read('x','x'),y=read('y','y');
         if(!Number.isFinite(x)||!Number.isFinite(y)||Math.abs(x)>1200||Math.abs(y)>1200)throw Error('Enter valid left and top positions.');
         // Keep the center when only dimensions change; honor explicitly edited positions.
         const sized=resizeFromCenter(old,w,h,state.wall);
@@ -163,6 +166,8 @@ export function createStudio(api){
   $('studio-duplicate').addEventListener('click',()=>action(p=>{const state=api.get().state;if(state.items.length>=40){api.toast('This wall supports up to 40 pieces.');return}const copy={...p,id:crypto.randomUUID(),name:(p.name+' copy').slice(0,60),x:Math.max(0,Math.min(state.wall.w-p.w,p.x+p.w+state.gap)),y:p.y};api.applyPiece(copy,true);editId=copy.id;sync(true)}));
   $('studio-center-x').addEventListener('click',()=>action(p=>api.applyPiece({...p,x:(api.get().state.wall.w-p.w)/2})));
   $('studio-center-y').addEventListener('click',()=>action(p=>api.applyPiece({...p,y:(api.get().state.wall.h-p.h)/2})));
+  $('studio-hangers').addEventListener('click',()=>action(p=>api.hangers(p.id)));
+  $('studio-guide').addEventListener('click',()=>guard(api.guide));
   $('studio-photo').addEventListener('click',()=>action(p=>api.details(p.id)));
   $('studio-delete').addEventListener('click',()=>action(p=>api.confirm('Delete this piece?',`Remove ${p.name} from your wall? You can undo this.`,()=>api.remove(p.id))));
   $('studio-arrange').addEventListener('click',()=>guard(()=>{

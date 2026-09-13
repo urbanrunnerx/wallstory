@@ -1,20 +1,23 @@
 import {arrange,bounds,issues,clamp,validCorners,homography,validateProject} from './layout.js';
 import {createDraftStore,createAutosaver} from './project-store.js';
 import {createStudio} from './studio.js';
+import {cloneHanging,hangingStatus,reconcileHanging} from './hanging.js';
+import {createHangingEditor} from './hanging-editor.js';
+import {svgShape,hangingMap,buildHangingGuide} from './hanging-guide.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const defaultCorners=()=>[{x:.05,y:.05},{x:.95,y:.05},{x:.95,y:.85},{x:.05,y:.85}];
 const starter=[['The big picture',20,28,'rectangle','#453c32'],['A favorite memory',12,16,'rectangle','#ba9163'],['A little perspective',16,12,'rectangle','#242927'],['Round mirror',14,14,'circle','#a88b48'],['Something small',10,10,'square','#453c32'],['Weekend find',10,14,'arch','#ba9163'],['A keepsake',8,10,'rectangle','#e9e5db']];
 let state={wall:{w:144,h:96},unit:'in',gap:2,margin:4,center:57,style:'balanced',items:starter.map((a,i)=>({id:'piece-'+(i+1),name:a[0],w:a[1],h:a[2],shape:a[3],color:a[4],image:null,x:0,y:0,rotation:0})),photo:null,rawPhoto:null,corners:defaultCorners()};
 const initial=arrange(state);if(initial.ok)state.items=initial.items;
-let selected=null,tab='wall',planView=false,showMeasurements=true,showGrid=false,snap=true,history=[],future=[],dirty=false,variation=0,editing=null,draftImage=null,draftRotation=0,pendingPhoto=null,calibrationMode='wall',calibrationCorners=defaultCorners(),calibrationDrag=null,drag=null,toastTimer;
-let autosaver=null,initializing=true,pendingOperations=0,studio=null;
+let selected=null,tab='wall',planView=false,showMeasurements=true,showGrid=false,snap=true,history=[],future=[],dirty=false,variation=0,editing=null,draftImage=null,draftRotation=0,pieceFields={},pendingPhoto=null,calibrationMode='wall',calibrationCorners=defaultCorners(),calibrationDrag=null,drag=null,toastTimer;
+let autosaver=null,initializing=true,pendingOperations=0,studio=null,hangingEditor=null;
 const unitFactor=()=>state.unit==='cm'?2.54:1;
 const number=(v,digits=2)=>Number(v.toFixed(digits)).toLocaleString('en-US',{maximumFractionDigits:digits});
 const display=v=>Number((v*unitFactor()).toFixed(2));
 const measure=v=>`${number(v*unitFactor())} ${state.unit}`;
 const toIn=v=>Number(v)/unitFactor();
-function snapshot(){return {...state,wall:{...state.wall},items:state.items.map(p=>({...p})),corners:state.corners.map(p=>({...p}))}}
+function snapshot(){return {...state,wall:{...state.wall},items:state.items.map(p=>({...p,hanging:cloneHanging(p.hanging)})),corners:state.corners.map(p=>({...p}))}}
 function projectDraft(){return {format:'wallstory',version:1,state:snapshot(),view:{tab,planView,showMeasurements,showGrid,snap}}}
 function autosaveStatus(status,error){
   $('#save-strip').dataset.saveState=status;
@@ -94,13 +97,13 @@ function openPiece(id=null,details=false){
   selected=id;draftImage=p.image;draftRotation=p.rotation;
   $('#piece-dialog-title').textContent=id?'Make it yours':'Add a piece';$('#submit-piece').textContent=id?'Save changes':'Add to wall';$('#piece-name').value=p.name;$('#piece-shape').value=p.shape;$('#piece-color').value=p.color;
   setInput('#piece-width',p.w,.25,600);setInput('#piece-height',p.h,.25,600);if(id){setInput('#piece-x',p.x,-1200,1200);setInput('#piece-y',p.y,-1200,1200)}
-  $('#piece-position').hidden=!id;$('#delete-piece').hidden=!id;$('#piece-error').textContent='';updateShape();updatePiecePhoto();$('#piece-dialog').showModal();
+  $('#piece-hanging-status').textContent=hangingStatus(p).label;$('#piece-position').hidden=!id;$('#delete-piece').hidden=!id;$('#piece-error').textContent='';updateShape();updatePiecePhoto();pieceFields=Object.fromEntries(['width','height','x','y'].map(id=>[id,$('#piece-'+id).value]));$('#piece-dialog').showModal();
 }
 function updateShape(){const equal=['circle','square'].includes($('#piece-shape').value);$('#piece-height').readOnly=equal;if(equal)$('#piece-height').value=$('#piece-width').value;$('#shape-note').textContent=equal?'Width and height stay equal for this shape.':'Include the frame in your measurements.'}
 $('#piece-shape').addEventListener('change',updateShape);$('#piece-width').addEventListener('input',updateShape);
 $('#add-piece').addEventListener('click',()=>openPiece());$('#empty-add').addEventListener('click',()=>openPiece());$('#piece-list').addEventListener('click',e=>{const b=e.target.closest('[data-edit]');if(b)openPiece(b.dataset.edit)});
 $$('[data-color]').forEach(b=>b.addEventListener('click',()=>$('#piece-color').value=b.dataset.color));
-$('#rotate-piece').addEventListener('click',()=>{const w=$('#piece-width').value;$('#piece-width').value=$('#piece-height').value;$('#piece-height').value=w;draftRotation=(draftRotation+90)%360;updateShape()});
+$('#rotate-piece').addEventListener('click',()=>{const w=$('#piece-width').value;$('#piece-width').value=$('#piece-height').value;$('#piece-height').value=w;draftRotation=(draftRotation+90)%360;pieceFields.width=null;pieceFields.height=null;updateShape()});
 $('#remove-piece-photo').insertAdjacentHTML('afterend','<button id="crop-piece-photo" type="button" class="text-button" hidden>Crop & straighten</button>');
 $('.piece-photo-row').insertAdjacentHTML('afterend','<p class="field-note">Use a straight-on photo of your piece. Crop & straighten lets you mark its outer corners; the photo fills the selected shape.</p>');
 function updatePiecePhoto(){$('#piece-photo-preview').hidden=!draftImage;$('#remove-piece-photo').hidden=!draftImage;$('#crop-piece-photo').hidden=!draftImage;$('#add-piece-photo').textContent=draftImage?'Change piece photo':'Add a photo of this piece';if(draftImage)$('#piece-photo-preview').src=draftImage;else $('#piece-photo-preview').removeAttribute('src')}
@@ -108,12 +111,16 @@ $('#crop-piece-photo').addEventListener('click',()=>startCalibration(draftImage,
 $('#add-piece-photo').addEventListener('click',()=>{$('#piece-file').value='';$('#piece-file').click()});$('#remove-piece-photo').addEventListener('click',()=>{draftImage=null;updatePiecePhoto()});
 $('#piece-file').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{draftImage=await readPhoto(file,1000);updatePiecePhoto()}catch(error){$('#piece-error').textContent=error.message}});
 $('#piece-form').addEventListener('submit',e=>{
-  e.preventDefault();const name=$('#piece-name').value.trim(),w=toIn($('#piece-width').value),h=toIn($('#piece-height').value),shape=$('#piece-shape').value;
+  e.preventDefault();const old=editing?state.items.find(p=>p.id===editing):null;
+  const read=(id,key)=>old&&$('#piece-'+id).value===pieceFields[id]?old[key]:toIn($('#piece-'+id).value);
+  const name=$('#piece-name').value.trim(),w=read('width','w'),shape=$('#piece-shape').value;
+  const h=['square','circle'].includes(shape)?w:read('height','h');
   if(!name||![w,h].every(v=>Number.isFinite(v)&&v>=.25&&v<=600)){$('#piece-error').textContent='Enter a name and valid outside dimensions.';return}
-  const old=editing?state.items.find(p=>p.id===editing):null;
-  const p={id:editing||crypto.randomUUID(),name,shape,w,h,color:$('#piece-color').value,image:draftImage,rotation:draftRotation,x:old?toIn($('#piece-x').value):(state.wall.w-w)/2,y:old?toIn($('#piece-y').value):clamp(state.wall.h-state.center-h/2,0,Math.max(0,state.wall.h-h))};
+  let p={id:editing||crypto.randomUUID(),name,shape,w,h,hanging:cloneHanging(old?.hanging),color:$('#piece-color').value,image:draftImage,rotation:draftRotation,x:old?read('x','x'):(state.wall.w-w)/2,y:old?read('y','y'):clamp(state.wall.h-state.center-h/2,0,Math.max(0,state.wall.h-h))};
   if(!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>1200||Math.abs(p.y)>1200){$('#piece-error').textContent='Enter a valid position.';return}
+  p=reconcileHanging(old,p);
   commit(()=>{if(old)state.items=state.items.map(t=>t.id===p.id?p:t);else state.items.push(p);selected=p.id});$('#piece-dialog').close();
+  if(e.submitter?.id==='piece-hangers'){hangingEditor.open(p.id);return}
   if(!old){toast('Piece added. Drag it into place or choose an arrangement.');setTab('pieces')}
 });
 $('#delete-piece').addEventListener('click',()=>{commit(()=>{state.items=state.items.filter(p=>p.id!==editing);selected=null});$('#piece-dialog').close()});
@@ -192,22 +199,17 @@ $('#project-file').addEventListener('change',async e=>{
   pendingOperations++;
   try{if(file.size>60*1024*1024)throw Error('Choose a project smaller than 60 MB.');const restored=validateProject(JSON.parse(await file.text()));const apply=()=>{commit(()=>{state=restored;selected=null});dirty=false;toast('Your gallery is ready to continue.')};if(dirty)confirmAction('Open this saved wall?','This will replace your current wall. You can undo the change.',apply);else apply()}catch(error){toast(error instanceof SyntaxError?'That file is not a valid Wallstory project.':error.message)}finally{pendingOperations--}
 });
-window.addEventListener('beforeunload',e=>{if((dirty&&(!autosaver||!autosaver.isSaved()))||drag?.moved||$('#piece-dialog').open||$('#calibration-dialog').open||studio?.hasDraft()||studio?.isBusy()){e.preventDefault();e.returnValue=''}});
+window.addEventListener('beforeunload',e=>{if((dirty&&(!autosaver||!autosaver.isSaved()))||drag?.moved||$('#piece-dialog').open||$('#calibration-dialog').open||hangingEditor?.hasDraft()||studio?.hasDraft()||studio?.isBusy()){e.preventDefault();e.returnValue=''}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&(drag?.moved||studio?.isBusy()))saveDraft()});
 window.addEventListener('pagehide',()=>{if(drag?.moved||studio?.isBusy())saveDraft()});
-function svgShape(p,attrs){if(p.shape==='circle'||p.shape==='oval')return `<ellipse cx="${p.w/2}" cy="${p.h/2}" rx="${p.w/2}" ry="${p.h/2}" ${attrs}/>`;if(p.shape==='hexagon')return `<polygon points="${p.w*.25},0 ${p.w*.75},0 ${p.w},${p.h*.5} ${p.w*.75},${p.h} ${p.w*.25},${p.h} 0,${p.h*.5}" ${attrs}/>`;if(p.shape==='arch')return `<path d="M0 ${p.h}V${p.h/2}A${p.w/2} ${p.h/2} 0 0 1 ${p.w} ${p.h/2}V${p.h}Z" ${attrs}/>`;return `<rect width="${p.w}" height="${p.h}" ${attrs}/>`}
-function guideSvg(){
-  const stroke=Math.max(state.wall.w,state.wall.h)/550,font=Math.max(state.wall.w,state.wall.h)/65;
-  return `<svg class="guide-diagram" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Numbered measured gallery wall plan" viewBox="-2 -2 ${state.wall.w+4} ${state.wall.h+4}"><rect width="${state.wall.w}" height="${state.wall.h}" fill="#fffdf5" stroke="#b8c1b0" stroke-width="${stroke}"/>${state.items.map((p,i)=>{const odd=p.rotation%180!==0,base={...p,w:odd?p.h:p.w,h:odd?p.w:p.h};return `<g transform="translate(${p.x+p.w/2} ${p.y+p.h/2}) rotate(${p.rotation}) translate(${-base.w/2} ${-base.h/2})">${svgShape(base,`fill="#ebeade" stroke="${p.color}" stroke-width="${stroke*2}"`)}</g><text x="${p.x+p.w/2}" y="${p.y+p.h/2}" text-anchor="middle" dominant-baseline="middle" font-family="Arial,sans-serif" font-size="${font}" fill="#294d3e">${i+1}</text>`}).join('')}</svg>`;
-}
-function guideContent(){
-  const v=issues(state),b=bounds(state.items),warn=v.outside.length||v.overlap.length||v.spacing.length||v.margin.length;
-  return `${warn?'<p class="guide-warning">This plan has a fit or spacing warning. Review the wall before using these measurements.</p>':''}<p>Mark each piece’s outline first with painter’s tape. All measurements below use the outer edges, including the frame.</p><div class="guide-summary"><span><strong>Wall</strong> ${measure(state.wall.w)} × ${measure(state.wall.h)}</span><span><strong>Pieces</strong> ${state.items.length}</span><span><strong>Gallery</strong> ${measure(b.w)} × ${measure(b.h)}</span></div>${guideSvg()}<div class="guide-table-wrap"><table class="guide-table"><thead><tr><th>Piece</th><th>Outside size</th><th>Left edge<br>from wall left</th><th>Top edge<br>from wall top</th><th>Center<br>from wall left</th><th>Center<br>from bottom</th></tr></thead><tbody>${state.items.map((p,i)=>`<tr><td><strong>${i+1}. ${esc(p.name)}</strong></td><td>${measure(p.w)} × ${measure(p.h)}</td><td>${measure(p.x)}</td><td>${measure(p.y)}</td><td>${measure(p.x+p.w/2)}</td><td>${measure(state.wall.h-p.y-p.h/2)}</td></tr>`).join('')}</tbody></table></div><p class="muted"><strong>Before making holes:</strong> Verify with a tape measure. These are frame placement coordinates, not nail positions. Measure each frame’s hanger offset; wire sag, hooks, and two-point hangers change the actual fixing positions. The bottom reference is the bottom of your marked wall rectangle, which may differ from the floor.</p><p class="field-note">Spacing checks use the outside bounding rectangle of each shape, so curves may leave extra room.</p>`;
-}
-$('#guide-button').addEventListener('click',()=>{if(!state.items.length){toast('Add a piece to create a hanging guide.');return}$('#guide-content').innerHTML=guideContent();$('#guide-dialog').showModal()});
+function guideContent(interactive=true){return buildHangingGuide(state,interactive)}
+function openGuide(){if(!state.items.length){toast('Add a piece to create a hanging guide.');return}$('#guide-content').innerHTML=guideContent();$('#guide-dialog').showModal()}
+$('#guide-button').addEventListener('click',openGuide);
+$('#guide-content').addEventListener('click',e=>{const button=e.target.closest('[data-guide-hanging]');if(button){$('#guide-dialog').close();hangingEditor.open(button.dataset.guideHanging)}});
+$('#download-nail-map').addEventListener('click',()=>{download(new Blob([hangingMap(state,true)],{type:'image/svg+xml'}),'wallstory-nail-map.svg');toast('Nail map downloaded. Use the guide tables for exact measurements.')});
 $('#print-guide').addEventListener('click',()=>window.print());
 $('#download-guide').addEventListener('click',()=>{
-  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wallstory · Hanging Guide</title><style>body{font-family:Arial,sans-serif;color:#253e32;max-width:1000px;margin:36px auto;padding:20px;line-height:1.6;font-size:14px}h1{font-size:28px}.guide-summary{display:flex;gap:24px;flex-wrap:wrap;padding:15px;background:#f1f4e9;margin:20px 0}.guide-diagram{width:100%;max-height:430px}.guide-table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12px;margin:22px 0}td,th{text-align:left;border-bottom:1px solid #dce3d7;padding:10px}.muted,.field-note{color:#64745e}.guide-warning{background:#faeadf;padding:12px;color:#85442b}@media print{body{margin:0;padding:0}.guide-diagram{max-height:300px}tr{break-inside:avoid}table{font-size:10px}}</style></head><body><h1>Wallstory · Your hanging guide</h1>${guideContent()}<p class="field-note">Use your browser’s Print command to save a PDF.</p></body></html>`;
+  const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wallstory · Hanging Guide</title><style>body{font-family:Arial,sans-serif;color:#253e32;max-width:1000px;margin:36px auto;padding:20px;line-height:1.6;font-size:14px}h1{font-size:28px}.guide-summary{display:flex;gap:24px;flex-wrap:wrap;padding:15px;background:#f1f4e9;margin:20px 0}.guide-diagram{width:100%;max-height:430px}.guide-table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12px;margin:22px 0}td,th{text-align:left;border-bottom:1px solid #dce3d7;padding:10px}.muted,.field-note{color:#64745e}.guide-section-title{margin:26px 0 8px}.guide-nail-card{break-inside:avoid;border:1px solid #dce3d7;border-radius:8px;padding:14px;margin:18px 0}.guide-point-status{padding:12px;border:1px solid #dce3d7;margin:12px 0}.guide-warning{background:#faeadf;padding:12px;color:#85442b}@media print{body{margin:0;padding:0}.guide-diagram{max-height:300px}tr{break-inside:avoid}table{font-size:10px}}</style></head><body><h1>Wallstory · Your hanging guide</h1>${guideContent(false)}<p class="field-note">Use your browser’s Print command to save a PDF.</p></body></html>`;
   download(new Blob([html],{type:'text/html'}),'wallstory-hanging-guide.html');toast('Hanging guide download started.');
 });
 function traceShape(ctx,p,w,h){ctx.beginPath();if(p.shape==='circle'||p.shape==='oval')ctx.ellipse(w/2,h/2,w/2,h/2,0,0,Math.PI*2);else if(p.shape==='hexagon'){ctx.moveTo(w*.25,0);ctx.lineTo(w*.75,0);ctx.lineTo(w,h/2);ctx.lineTo(w*.75,h);ctx.lineTo(w*.25,h);ctx.lineTo(0,h/2);ctx.closePath()}else if(p.shape==='arch'){ctx.moveTo(0,h);ctx.lineTo(0,h/2);ctx.ellipse(w/2,h/2,w/2,h/2,0,Math.PI,Math.PI*2);ctx.lineTo(w,h);ctx.closePath()}else ctx.rect(0,0,w,h)}
@@ -226,6 +228,14 @@ async function exportImage(){
   }catch{toast('The image could not be exported. Save the project and try again.')}finally{button.disabled=false;button.textContent='Export image'}
 }
 $('#export-image').addEventListener('click',exportImage);
+hangingEditor=createHangingEditor({
+  piece:id=>state.items.find(p=>p.id===id),unit:()=>state.unit,shape:svgShape,confirm:confirmAction,toast,
+  save:(id,hanging)=>{
+    const candidate={...state,items:state.items.map(p=>p.id===id?{...p,hanging}:p)};
+    const checked=validateProject({format:'wallstory',version:1,state:candidate});
+    commit(()=>{state=checked;selected=id});
+  }
+});
 // Optional browser-native tools share the same validated actions as the UI.
 if(document.modelContext?.registerTool){
   const lifecycle=new AbortController();
@@ -238,6 +248,7 @@ studio=createStudio({
   get:()=>({state,selected,canUndo:!!history.length,canRedo:!!future.length,view:{planView,showMeasurements,showGrid,snap}}),
   select:id=>{selected=id;$$('.piece').forEach(el=>el.classList.toggle('selected',el.dataset.piece===id))},
   applyPiece:(piece,adding=false)=>{
+    piece=reconcileHanging(adding?null:state.items.find(p=>p.id===piece.id),piece);
     const candidate={...state,items:adding?[...state.items,piece]:state.items.map(p=>p.id===piece.id?piece:p)};
     const checked=validateProject({format:'wallstory',version:1,state:candidate});
     commit(()=>{state=checked;selected=piece.id});
@@ -245,7 +256,7 @@ studio=createStudio({
   remove:id=>commit(()=>{state.items=state.items.filter(p=>p.id!==id);selected=null}),
   beginGesture:remember,
   previewPiece:piece=>{
-    const p=state.items.find(p=>p.id===piece.id);if(!p)return;Object.assign(p,piece);dirty=true;
+    const p=state.items.find(p=>p.id===piece.id);if(!p)return;Object.assign(p,reconcileHanging(p,piece));dirty=true;
     const el=$(`[data-piece="${CSS.escape(p.id)}"]`);if(el){setPiecePosition(el,p);el.style.width=`${p.w/state.wall.w*100}%`;el.style.height=`${p.h/state.wall.h*100}%`;el.querySelector('.piece-body').style.cssText=bodyStyle(p);el.querySelector('.piece-label').textContent=`${number(display(p.w))} × ${number(display(p.h))}`}
     updateStatus();
   },
@@ -253,6 +264,8 @@ studio=createStudio({
   finishDrag:()=>{if(drag)endDrag({pointerId:drag.pointer},true)},
   undo,redo,confirm:confirmAction,toast,
   details:id=>openPiece(id,true),
+  hangers:id=>hangingEditor.open(id),
+  hangingStatus,guide:openGuide,
   arrange:(style,gap,margin)=>{
     const proposed={...state,gap,margin};const result=arrange(proposed,style,variation++);
     if(!result.ok){toast(result.message);return}

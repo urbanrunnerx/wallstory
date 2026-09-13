@@ -1,6 +1,6 @@
 (() => {
   // Bump this and sw.js together for every published app release.
-  const VERSION = '20260913-1';
+  const VERSION = '20260913-2';
   const checkButton = document.getElementById('check-updates');
   const notice = document.getElementById('update-notice');
   const updateButton = document.getElementById('apply-update');

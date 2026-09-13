@@ -19,7 +19,7 @@ Open the published GitHub Pages link in your phone or computer browser. No ChatG
 1. **Wall:** Enter width and height in inches or centimeters. Add your wall photo and mark the four corners of the rectangle you measured.
 2. **Pieces:** Clear the sample pieces or edit them. Add your real outside dimensions, including frames. Upload artwork photos; use Crop & straighten to mark their edges.
 3. **Layout:** Choose Balanced, Gallery grid, Salon wall, Center line, or Stair step. Set the gap and edge distance. You can also drag a piece or enter its exact position.
-4. **Hang:** Open the measured hanging guide, export an image, or print/save the guide as a PDF.
+4. **Hang:** Open a piece and choose **Save & set hanging points**, or use **Hanging points** in the full-screen studio. Measure and confirm its hardware, then open **Hanging guide** for separate frame-edge and nail coordinates. Download the guide, print/save it as a PDF, or download the nail map as SVG.
 5. **Keep your work:** Look for **Saved on this device** after editing. Your latest wall restores automatically. Download a backup with **Save project** and use **Open project** to import a design. Finish a piece edit with **Save changes** (or **Add to wall**) to include it in autosave.
 6. **Update:** Use **Check for updates**. When **Update available** appears, choose **Save & update**. The app waits for the design to finish saving before reloading. If saving fails, it stays open and explains what to do.
 
@@ -40,6 +40,22 @@ Tap **Full-screen studio** above the wall. The app requests fullscreen and lands
 - The save indicator and fit warnings remain visible. A single resize gesture is one undo step. Unapplied form edits block updates and ask before being discarded.
 
 Fullscreen and orientation are browser capabilities; support varies. The viewport fallback preserves all editing controls. Test on the target phone before relying on automatic rotation. The automated DOM interaction tests do not render CSS or emulate native phone fullscreen.
+
+## Precise hanging points
+
+- Open a piece and choose **Save & set hanging points**. In full-screen mode, tap a piece → **Hanging points**. The guide also links to each frame’s hanging editor.
+- Keep the frame’s intended top at the top. The **Back of frame** diagram is a true-scale schematic of the frame you entered. **Front / wall view** mirrors the support points horizontally so they match the wall view.
+- Add up to 12 points per frame. **One centered**, **Symmetric pair**, **Center this point**, and **Level all to this point** help set initial positions. Shortcuts are drafts, not measured hardware.
+- Drag crosshairs or enter exact distances from the left, right, and top. Labels always identify which side you are viewing. Inches and centimeters are supported; arrow keys nudge by 1/16 inch or 1 mm, with Shift for four times that step.
+- For a direct nail or screw, measure the actual support contact point. For a wall hook, enter how far its nail entry is **above** the support point. This models one nail directly above each hook, not multiple nails or horizontal offsets within a hook. Measure wire under tension at the intended support positions.
+- Check **I measured every support point…** only after verifying the actual hardware, then **Save hanging points**. Saving unchecked keeps a draft and withholds nail coordinates.
+- The guide provides frame-edge distances from the wall’s left, top and right, followed by individually labeled nail coordinates from all four wall edges. The numbered nail map is downloadable as SVG; guide HTML can be downloaded or printed to PDF. The diagrams are not full-size drilling templates.
+- Moving or arranging a piece recalculates its nail positions. Resizing, rotating, changing shape, or duplicating a piece requires reconfirming its hardware. Existing physical offsets are preserved for review rather than scaled. Points outside a resized frame cannot be confirmed. A nail outside the measured wall is flagged in the guide.
+- Saved projects and on-device autosave include the hanging measurements. Older projects open with **Hanging points not measured**. Edits support undo/redo; unfinished hanging edits block app updates and ask before being discarded.
+
+The calculation is based on entered measurements, not the wall photograph: `wall nail x = frame left + frame width − distance from back left`; `wall nail y = frame top + distance down from frame top − hook rise`. A 10-inch frame placed 20 inches from wall left and 12 inches below wall top, with direct hangers 2.5 inches from each side and 1 inch down, needs nails at 22.5 and 27.5 inches from wall left, both 13 inches from wall top.
+
+`hanging.js` validates and calculates the measurements. `hanging-editor.js` / `hanging.css` provide the editor; `hanging-guide.js` generates the maps and tables. Automated tests cover asymmetric mirroring, both user examples, hook offsets, invalid data, saved project compatibility, draft protection, centimeters, touch/keyboard edits and undo. The DOM harness does not render phone layouts or test native browser fullscreen.
 
 ## Publish on GitHub Pages
 
@@ -67,7 +83,7 @@ Use an HTTP server or hosted link; opening `index.html` directly as a local file
 - `index.html` and `style.css`: responsive interface.
 - `sample-wall.webp`: generated demonstration photograph, not a measurement reference.
 
-Automatic layouts preserve the entered outside dimensions. Shape spacing is checked conservatively using bounding rectangles. Photos are visual previews; verify all measurements before hanging. The guide provides frame edges and centers, not nail positions. Measure hanger offsets and account for wire sag separately.
+Automatic layouts preserve the entered outside dimensions. Shape spacing is checked conservatively using bounding rectangles. Photos are visual previews; verify all measurements before hanging. The guide separates frame placement from nail / anchor positions. Nail coordinates are calculated only for confirmed hanging measurements. Wire tension and hook offsets must be measured on the actual hardware.
 
 ## Publishing updates
 

@@ -4,6 +4,8 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {webcrypto} from 'node:crypto';
 import * as layout from '../layout.js';
+import * as hanging from '../hanging.js';
+import * as guide from '../hanging-guide.js';
 import * as math from '../studio-math.js';
 import {createAutosaver} from '../project-store.js';
 const decode=s=>s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
@@ -46,10 +48,11 @@ export async function appHarness(saved=null){
  const html=await readFile(new URL('../index.html',import.meta.url),'utf8');for(const node of parse(html))doc.append(node);doc.body=doc.querySelector('body');doc.documentElement=doc.querySelector('html');
  const window=new Element('window');window.indexedDB={};const savedProjects=[];let current=saved;
  const timers=new Set();function setTimer(fn,delay){const timer=setTimeout(fn,delay);timer.unref();timers.add(timer);return timer}
- const context=vm.createContext({...layout,...math,createAutosaver,createDraftStore:()=>({load:async()=>current,write:async value=>{current=structuredClone(value);savedProjects.push(current)}}),document:doc,window,screen:{orientation:{}},location:{href:'https://example.test/wallstory/'},innerWidth:1000,innerHeight:650,crypto:webcrypto,URL,Blob,Image:class{},CSS:{escape:s=>s},ResizeObserver:class{observe(){}},MutationObserver:class{observe(){}},requestAnimationFrame:fn=>setImmediate(fn),cancelAnimationFrame:clearImmediate,setTimeout:setTimer,clearTimeout,console});
+ const context=vm.createContext({...layout,...math,...hanging,...guide,createAutosaver,createDraftStore:()=>({load:async()=>current,write:async value=>{current=structuredClone(value);savedProjects.push(current)}}),document:doc,window,screen:{orientation:{}},location:{href:'https://example.test/wallstory/'},innerWidth:1000,innerHeight:650,crypto:webcrypto,URL,Blob,Image:class{},CSS:{escape:s=>s},ResizeObserver:class{observe(){}},MutationObserver:class{observe(){}},requestAnimationFrame:fn=>setImmediate(fn),cancelAnimationFrame:clearImmediate,setTimeout:setTimer,clearTimeout,console});
  const studio=(await readFile(new URL('../studio.js',import.meta.url),'utf8')).replace(/^import .*;\n/,'').replace('export function createStudio','function createStudio');
+ const hangingEditor=(await readFile(new URL('../hanging-editor.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replace('export function createHangingEditor','function createHangingEditor');
  const app=(await readFile(new URL('../app.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
- vm.runInContext(`const createStudio=(()=>{${studio}\nreturn createStudio})();\n${app}`,context);
+ vm.runInContext(`const createHangingEditor=(()=>{${hangingEditor}\nreturn createHangingEditor})();\nconst createStudio=(()=>{${studio}\nreturn createStudio})();\n${app}`,context);
  await new Promise(resolve=>setImmediate(resolve));
  return {doc,window,savedProjects,get state(){return vm.runInContext('state',context)},node:id=>doc.getElementById(id),event:(id,type,props={})=>doc.getElementById(id).dispatchEvent({type,...props}),settle:()=>new Promise(resolve=>setImmediate(resolve)),dispose:()=>{for(const timer of timers)clearTimeout(timer)}};
 }
